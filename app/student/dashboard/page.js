@@ -28,14 +28,14 @@ export default function StudentDashboard() {
 
   const load = useCallback(async () => {
     try {
-      const { data: { session } } = await sb.auth.getSession()
+      const sb2 = supabaseBrowser()
+      const { data: { session } } = await sb2.auth.getSession()
       if (!session) { setLoading(false); return }
       const uid = session.user.id
-      const [profRes, feeRes, paysRes] = await Promise.all([
-        sb.from('profiles').select('*').eq('id', uid).maybeSingle(),
-        sb.from('student_fees').select('total_fee').eq('student_id', uid).maybeSingle(),
-        sb.from('payments').select('*').eq('student_id', uid).order('created_at', { ascending: false }),
-      ])
+      // Sequential (not Promise.all) to survive transient dev-mode fetch aborts
+      const profRes = await sb2.from('profiles').select('*').eq('id', uid).maybeSingle()
+      const feeRes = await sb2.from('student_fees').select('total_fee').eq('student_id', uid).maybeSingle()
+      const paysRes = await sb2.from('payments').select('*').eq('student_id', uid).order('created_at', { ascending: false })
       if (profRes.error) console.error('[dash] profile', profRes.error)
       if (feeRes.error) console.error('[dash] fee', feeRes.error)
       if (paysRes.error) console.error('[dash] pays', paysRes.error)
@@ -47,9 +47,15 @@ export default function StudentDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [sb])
+  }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    // Retry once after 800ms if any dev-mode fetch abort happened
+    const t = setTimeout(() => { if (!profile) load() }, 800)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const approved = payments.filter(p => p.status === 'APPROVED')
   const sumBy = (type) => approved.filter(p => p.payment_type === type).reduce((a, b) => a + Number(b.amount), 0)

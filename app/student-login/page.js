@@ -33,53 +33,61 @@ export default function StudentLogin() {
     setLoading(true)
     const sb = supabaseBrowser()
     try {
-      // Clear any stale session so setSession below starts clean
+      // Clear any stale session so signIn below starts clean
       await sb.auth.signOut().catch(() => {})
 
-      // 1. Exchange Roll + DOB for Supabase tokens on the server
+      // 1. Exchange Roll + DOB for the mapped auth email + derived password
+      console.log('[student-login] student lookup: START')
       const res = await fetch('/api/auth/student-login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roll: roll.trim(), dob }),
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Login failed')
-      console.log('[student-login] tokens received')
+      console.log('[student-login] student lookup: SUCCESS')
 
-      // 2. Install session into the browser client (writes auth cookies + storage)
-      const { data: setData, error: setErr } = await sb.auth.setSession({
-        access_token: j.access_token, refresh_token: j.refresh_token,
-      })
-      if (setErr || !setData.session) throw new Error(setErr?.message || 'Could not establish session')
-      console.log('[student-login] session installed for', setData.session.user.id)
+      // 2. Let the BROWSER client perform the sign-in itself. This guarantees
+      //    the auth cookie is written before the promise resolves \u2014 no
+      //    cross-client token transfer race.
+      const { data, error } = await sb.auth.signInWithPassword({ email: j.email, password: j.password })
+      if (error) {
+        console.error('[student-login] auth result: FAIL', error)
+        throw new Error('Invalid Roll Number or Date of Birth.')
+      }
+      if (!data.session || !data.user) {
+        console.error('[student-login] auth returned no session/user')
+        throw new Error('Unable to establish secure session.')
+      }
+      console.log('[student-login] auth result: SUCCESS')
+      console.log('[student-login] session exists: true')
+      console.log('[student-login] user id:', data.user.id)
 
-      // 3. Verify session is really there (guards against race with cookie writes)
-      const { data: { session: verify } } = await sb.auth.getSession()
-      if (!verify) throw new Error('Session did not persist. Please try again.')
-      console.log('[student-login] session verified')
-
-      // 4. Verify profile + role
+      // 3. Verify profile + role using the authenticated user id from the response
       const { data: prof, error: profErr } = await sb.from('profiles')
-        .select('role, full_name, status').eq('id', verify.user.id).maybeSingle()
+        .select('role, full_name, status').eq('id', data.user.id).maybeSingle()
       if (profErr || !prof) {
-        console.error('[student-login] profile lookup failed', profErr)
+        console.error('[student-login] profile result: FAIL', profErr)
+        await sb.auth.signOut().catch(() => {})
         throw new Error('Student account could not be verified. Please contact the administrator.')
       }
+      console.log('[student-login] profile result: SUCCESS')
+      console.log('[student-login] role:', prof.role)
       if (prof.role !== 'student') {
         await sb.auth.signOut()
-        throw new Error('This account is not a student account.')
+        throw new Error(prof.role === 'admin' ? 'Please use the Admin login for this account.' : 'This account is not a student account.')
       }
       if (prof.status === 'inactive') {
         await sb.auth.signOut()
         throw new Error('This account is inactive. Please contact the administrator.')
       }
-      console.log('[student-login] role verified, redirecting')
 
+      console.log('[student-login] redirecting: /student/dashboard')
       toast.success(`Welcome, ${prof.full_name || 'student'}`)
 
-      // 5. Navigate. Try Next.js router first; hard-fallback if it stalls.
+      // 4. Navigate. Prefer Next router; hard-fallback if still on login shortly after.
       router.replace('/student/dashboard')
       setTimeout(() => {
-        if (typeof window !== 'undefined' && window.location.pathname !== '/student/dashboard') {
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/student/dashboard')) {
           window.location.replace('/student/dashboard')
         }
       }, 400)

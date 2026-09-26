@@ -73,6 +73,9 @@ async function adminGuard(req, fn) {
 }
 
 // ---------- Student login (Roll + DOB) ----------
+// Returns { email, password } after verifying Roll+DOB. The browser client
+// then calls signInWithPassword directly so the auth session cookie is
+// guaranteed to be written before the promise resolves (no cross-client race).
 async function studentLogin(req) {
   const body = await req.json().catch(() => ({}))
   const roll = String(body.roll || '').trim()
@@ -88,18 +91,11 @@ async function studentLogin(req) {
   if (!prof.dob || prof.dob !== dob) return generic()
   if (!prof.email) return NextResponse.json({ error: 'Login not configured. Please contact the administrator.' }, { status: 400 })
 
-  // Ensure the derived password is set for this user (idempotent)
+  // Ensure the derived password is set for this user (idempotent, self-healing)
   const password = derivePassword(roll, dob)
   await supabaseAdmin.auth.admin.updateUserById(prof.id, { password, email_confirm: true })
 
-  // Sign in via anon server client to obtain access/refresh tokens
-  const anon = anonServerClient()
-  const { data, error } = await anon.auth.signInWithPassword({ email: prof.email, password })
-  if (error || !data.session) return generic()
-  return NextResponse.json({
-    access_token: data.session.access_token,
-    refresh_token: data.session.refresh_token,
-  })
+  return NextResponse.json({ email: prof.email, password })
 }
 
 // ---------- Create student ----------
