@@ -1,42 +1,93 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import { toast } from 'sonner'
 import { GraduationCap, ArrowLeft, Loader2 } from 'lucide-react'
 
 export default function StudentLogin() {
+  const router = useRouter()
   const [roll, setRoll] = useState('')
   const [dob, setDob] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // Auto-redirect if already logged in as student
   useEffect(() => {
-    const sb = supabaseBrowser()
+    let cancelled = false
     ;(async () => {
+      const sb = supabaseBrowser()
       const { data: { session } } = await sb.auth.getSession()
-      if (!session) return
+      if (!session || cancelled) return
       const { data: prof } = await sb.from('profiles').select('role').eq('id', session.user.id).maybeSingle()
-      if (prof?.role === 'student') window.location.assign('/student/dashboard')
+      if (cancelled) return
+      if (prof?.role === 'student') window.location.replace('/student/dashboard')
+      else if (prof?.role === 'admin') window.location.replace('/admin/dashboard')
     })()
+    return () => { cancelled = true }
   }, [])
 
   async function onSubmit(e) {
     e.preventDefault()
     if (loading) return
     setLoading(true)
+    const sb = supabaseBrowser()
     try {
+      // Clear any stale session so setSession below starts clean
+      await sb.auth.signOut().catch(() => {})
+
+      // 1. Exchange Roll + DOB for Supabase tokens on the server
       const res = await fetch('/api/auth/student-login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roll, dob }),
+        body: JSON.stringify({ roll: roll.trim(), dob }),
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Login failed')
-      const sb = supabaseBrowser()
-      const { error } = await sb.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token })
-      if (error) throw new Error(error.message)
-      toast.success('Welcome!')
-      window.location.assign('/student/dashboard')
-    } catch (e) { toast.error(e.message); setLoading(false) }
+      console.log('[student-login] tokens received')
+
+      // 2. Install session into the browser client (writes auth cookies + storage)
+      const { data: setData, error: setErr } = await sb.auth.setSession({
+        access_token: j.access_token, refresh_token: j.refresh_token,
+      })
+      if (setErr || !setData.session) throw new Error(setErr?.message || 'Could not establish session')
+      console.log('[student-login] session installed for', setData.session.user.id)
+
+      // 3. Verify session is really there (guards against race with cookie writes)
+      const { data: { session: verify } } = await sb.auth.getSession()
+      if (!verify) throw new Error('Session did not persist. Please try again.')
+      console.log('[student-login] session verified')
+
+      // 4. Verify profile + role
+      const { data: prof, error: profErr } = await sb.from('profiles')
+        .select('role, full_name, status').eq('id', verify.user.id).maybeSingle()
+      if (profErr || !prof) {
+        console.error('[student-login] profile lookup failed', profErr)
+        throw new Error('Student account could not be verified. Please contact the administrator.')
+      }
+      if (prof.role !== 'student') {
+        await sb.auth.signOut()
+        throw new Error('This account is not a student account.')
+      }
+      if (prof.status === 'inactive') {
+        await sb.auth.signOut()
+        throw new Error('This account is inactive. Please contact the administrator.')
+      }
+      console.log('[student-login] role verified, redirecting')
+
+      toast.success(`Welcome, ${prof.full_name || 'student'}`)
+
+      // 5. Navigate. Try Next.js router first; hard-fallback if it stalls.
+      router.replace('/student/dashboard')
+      setTimeout(() => {
+        if (typeof window !== 'undefined' && window.location.pathname !== '/student/dashboard') {
+          window.location.replace('/student/dashboard')
+        }
+      }, 400)
+    } catch (err) {
+      console.error('[student-login] failed', err)
+      toast.error(err.message || 'Login failed')
+      setLoading(false)
+    }
   }
 
   return (

@@ -15,14 +15,30 @@ export default function StudentLayout({ children }) {
 
   useEffect(() => {
     const sb = supabaseBrowser()
+    let mounted = true
     ;(async () => {
-      const { data: { session } } = await sb.auth.getSession()
-      if (!session) { window.location.replace('/student-login'); return }
-      const { data: prof, error } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
-      if (error || !prof) { toast.error('Could not load profile'); await sb.auth.signOut(); window.location.replace('/student-login'); return }
-      if (prof.role !== 'student') { await sb.auth.signOut(); window.location.replace('/student-login'); return }
-      setProfile(prof); setLoading(false)
+      try {
+        const { data: { session } } = await sb.auth.getSession()
+        if (!session) { window.location.replace('/student-login'); return }
+        const { data: prof, error } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
+        if (!mounted) return
+        if (error) {
+          console.error('[student-layout] profile query error', error)
+          toast.error('Could not load profile')
+          await sb.auth.signOut(); window.location.replace('/student-login'); return
+        }
+        if (!prof) { toast.error('No profile found'); await sb.auth.signOut(); window.location.replace('/student-login'); return }
+        if (prof.role !== 'student') {
+          if (prof.role === 'admin') { window.location.replace('/admin/dashboard'); return }
+          await sb.auth.signOut(); window.location.replace('/student-login'); return
+        }
+        setProfile(prof); setLoading(false)
+      } catch (e) {
+        console.error('[student-layout] fatal', e)
+        window.location.replace('/student-login')
+      }
     })()
+    return () => { mounted = false }
   }, [router])
 
   async function logout() {

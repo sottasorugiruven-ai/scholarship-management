@@ -17,9 +17,11 @@ export default function StudentPaymentHistory() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { (async () => {
-    const { data: { user } } = await sb.auth.getUser(); if (!user) return
-    const { data } = await sb.from('payments').select('*').eq('student_id', user.id).order('created_at', { ascending: false })
-    setPayments(data || []); setLoading(false)
+    try {
+      const { data: { session } } = await sb.auth.getSession(); if (!session) { setLoading(false); return }
+      const { data } = await sb.from('payments').select('*').eq('student_id', session.user.id).order('created_at', { ascending: false })
+      setPayments(data || [])
+    } finally { setLoading(false) }
   })() }, [sb])
 
   const filtered = payments.filter(p => {

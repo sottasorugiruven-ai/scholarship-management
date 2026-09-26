@@ -27,15 +27,26 @@ export default function StudentDashboard() {
   const [search, setSearch] = useState('')
 
   const load = useCallback(async () => {
-    const { data: { user } } = await sb.auth.getUser()
-    if (!user) return
-    const [{ data: prof }, { data: feeRow }, { data: pays }] = await Promise.all([
-      sb.from('profiles').select('*').eq('id', user.id).single(),
-      sb.from('student_fees').select('total_fee').eq('student_id', user.id).maybeSingle(),
-      sb.from('payments').select('*').eq('student_id', user.id).order('created_at', { ascending: false }),
-    ])
-    setProfile(prof); setFee(Number(feeRow?.total_fee || 0)); setPayments(pays || [])
-    setLoading(false)
+    try {
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { setLoading(false); return }
+      const uid = session.user.id
+      const [profRes, feeRes, paysRes] = await Promise.all([
+        sb.from('profiles').select('*').eq('id', uid).maybeSingle(),
+        sb.from('student_fees').select('total_fee').eq('student_id', uid).maybeSingle(),
+        sb.from('payments').select('*').eq('student_id', uid).order('created_at', { ascending: false }),
+      ])
+      if (profRes.error) console.error('[dash] profile', profRes.error)
+      if (feeRes.error) console.error('[dash] fee', feeRes.error)
+      if (paysRes.error) console.error('[dash] pays', paysRes.error)
+      setProfile(profRes.data || null)
+      setFee(Number(feeRes.data?.total_fee || 0))
+      setPayments(paysRes.data || [])
+    } catch (e) {
+      console.error('[dash] load fatal', e)
+    } finally {
+      setLoading(false)
+    }
   }, [sb])
 
   useEffect(() => { load() }, [load])

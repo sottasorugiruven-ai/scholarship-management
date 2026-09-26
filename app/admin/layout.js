@@ -17,7 +17,10 @@ export default function AdminLayout({ children }) {
       if (!session) { window.location.replace('/admin-login'); return }
       const { data: prof, error } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
       if (error || !prof) { toast.error('Could not load profile'); await sb.auth.signOut(); window.location.replace('/admin-login'); return }
-      if (prof.role !== 'admin') { await sb.auth.signOut(); window.location.replace('/admin-login'); return }
+      if (prof.role !== 'admin') {
+        if (prof.role === 'student') { window.location.replace('/student/dashboard'); return }
+        await sb.auth.signOut(); window.location.replace('/admin-login'); return
+      }
       setProfile(prof); setLoading(false)
     })()
   }, [router])
