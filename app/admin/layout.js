@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabase/browser'
-import { LayoutDashboard, Users, Receipt, Award, FileText, BarChart3, LogOut, ShieldCheck, Menu, X } from 'lucide-react'
+import { LayoutDashboard, Users, Receipt, Award, FileText, BarChart3, LogOut, ShieldCheck, Menu, X, Settings2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function AdminLayout({ children }) {
@@ -31,6 +31,7 @@ export default function AdminLayout({ children }) {
     { href: '/admin/scholarships', label: 'Scholarships', icon: Award },
     { href: '/admin/documents', label: 'Documents', icon: FileText },
     { href: '/admin/reports', label: 'Reports', icon: BarChart3 },
+    { href: '/admin/master', label: 'Master Data', icon: Settings2 },
   ]
 
   if (loading) return <div className="min-h-screen grid place-items-center text-slate-500">Loading…</div>

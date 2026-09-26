@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { ArrowLeft, Copy, Check, PlayCircle, Loader2, Database, UserPlus } from 'lucide-react'
 
 const SQL_URL = '/api/setup/sql'
+const SQL_V2_URL = '/api/setup/sql-v2'
 
 export default function SetupPage() {
   const [sql, setSql] = useState('')
@@ -63,6 +64,22 @@ export default function SetupPage() {
 
         <div className="mt-6 bg-white rounded-2xl border border-slate-200 p-6">
           <div className="flex items-start gap-3">
+            <div className="h-10 w-10 rounded-lg bg-blue-50 text-[#0b2b6b] grid place-items-center"><Database className="h-5 w-5"/></div>
+            <div className="flex-1">
+              <h2 className="font-semibold text-slate-900">Step 1b &mdash; Migration v2 (Student Management)</h2>
+              <p className="text-sm text-slate-600 mt-1">Adds departments, academic years, scholarships, and DOB/status columns needed for Roll+DOB login. Paste this SQL into the SQL Editor and Run.</p>
+              <div className="mt-3 flex gap-2">
+                <button onClick={async ()=>{ const t = await (await fetch(SQL_V2_URL)).text(); await navigator.clipboard.writeText(t); toast.success('Migration v2 SQL copied') }} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0b2b6b] text-white text-sm font-medium hover:bg-[#0a2358]">
+                  <Copy className="h-4 w-4"/> Copy Migration v2 SQL
+                </button>
+                <a href={SQL_V2_URL} target="_blank" className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 hover:bg-slate-50">View SQL</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 bg-white rounded-2xl border border-slate-200 p-6">
+          <div className="flex items-start gap-3">
             <div className="h-10 w-10 rounded-lg bg-blue-50 text-[#0b2b6b] grid place-items-center"><UserPlus className="h-5 w-5"/></div>
             <div className="flex-1">
               <h2 className="font-semibold text-slate-900">Step 2 — Seed demo accounts &amp; data</h2>
@@ -74,7 +91,7 @@ export default function SetupPage() {
                 <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-sm">
                   <div className="font-medium text-emerald-800">✓ Setup complete!</div>
                   <div className="mt-2 grid gap-1 text-emerald-900">
-                    <div><b>Student:</b> student@college.edu / Student@123</div>
+                    <div><b>Student:</b> Roll 23IT042 &middot; DOB 2005-06-15</div>
                     <div><b>Admin:</b> admin@college.edu / Admin@123</div>
                   </div>
                 </div>
