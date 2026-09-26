@@ -1,33 +1,60 @@
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import { toast } from 'sonner'
 import { GraduationCap, ArrowLeft, Loader2 } from 'lucide-react'
 
 export default function StudentLogin() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // If already logged in as student, auto-redirect
+  useEffect(() => {
+    const sb = supabaseBrowser()
+    ;(async () => {
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) return
+      const { data: prof } = await sb.from('profiles').select('role').eq('id', session.user.id).maybeSingle()
+      if (prof?.role === 'student') window.location.assign('/student/dashboard')
+    })()
+  }, [])
+
   async function onSubmit(e) {
     e.preventDefault()
+    if (loading) return
     setLoading(true)
     const sb = supabaseBrowser()
     const { data, error } = await sb.auth.signInWithPassword({ email, password })
     if (error) { setLoading(false); toast.error(error.message); return }
-    // Verify student role
-    const { data: prof } = await sb.from('profiles').select('role').eq('id', data.user.id).single()
-    if (prof?.role !== 'student') {
-      await sb.auth.signOut()
+
+    const { data: prof, error: profErr } = await sb
+      .from('profiles')
+      .select('role, full_name')
+      .eq('id', data.user.id)
+      .maybeSingle()
+
+    if (profErr) {
       setLoading(false)
-      toast.error('This account is not a student account.')
+      toast.error(`Could not load your profile: ${profErr.message}`)
       return
     }
-    toast.success('Login successful')
-    router.push('/student/dashboard')
+    if (!prof) {
+      setLoading(false)
+      toast.error('No profile found for this account. Please contact the administrator.')
+      return
+    }
+    if (prof.role !== 'student') {
+      await sb.auth.signOut()
+      setLoading(false)
+      toast.error('This account is not a student account. Please use the Admin login.')
+      return
+    }
+
+    toast.success(`Welcome, ${prof.full_name || 'student'}`)
+    // Hard navigation guarantees the App Router picks up the fresh session cookies
+    window.location.assign('/student/dashboard')
   }
 
   return (
@@ -54,7 +81,7 @@ export default function StudentLogin() {
               <input type="password" required value={password} onChange={e=>setPassword(e.target.value)} className="mt-1 w-full h-11 px-3 rounded-lg border border-slate-300 focus:border-[#0b2b6b] focus:ring-2 focus:ring-blue-100 outline-none text-sm" placeholder="••••••••"/>
             </div>
             <button disabled={loading} className="w-full h-11 rounded-lg bg-[#0b2b6b] hover:bg-[#0a2358] text-white font-medium text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60">
-              {loading && <Loader2 className="h-4 w-4 animate-spin"/>} Sign in
+              {loading && <Loader2 className="h-4 w-4 animate-spin"/>} {loading ? 'Signing in\u2026' : 'Sign in'}
             </button>
           </form>
           <div className="mt-6 text-xs text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-200">

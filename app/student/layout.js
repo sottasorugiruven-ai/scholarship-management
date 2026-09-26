@@ -16,10 +16,11 @@ export default function StudentLayout({ children }) {
   useEffect(() => {
     const sb = supabaseBrowser()
     ;(async () => {
-      const { data: { user } } = await sb.auth.getUser()
-      if (!user) { router.replace('/student-login'); return }
-      const { data: prof } = await sb.from('profiles').select('*').eq('id', user.id).single()
-      if (!prof || prof.role !== 'student') { await sb.auth.signOut(); router.replace('/student-login'); return }
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { window.location.replace('/student-login'); return }
+      const { data: prof, error } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
+      if (error || !prof) { toast.error('Could not load profile'); await sb.auth.signOut(); window.location.replace('/student-login'); return }
+      if (prof.role !== 'student') { await sb.auth.signOut(); window.location.replace('/student-login'); return }
       setProfile(prof); setLoading(false)
     })()
   }, [router])
@@ -27,7 +28,7 @@ export default function StudentLayout({ children }) {
   async function logout() {
     await supabaseBrowser().auth.signOut()
     toast.success('Logged out')
-    router.replace('/student-login')
+    window.location.replace('/student-login')
   }
 
   const nav = [

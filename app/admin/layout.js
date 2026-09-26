@@ -13,15 +13,16 @@ export default function AdminLayout({ children }) {
   useEffect(() => {
     const sb = supabaseBrowser()
     ;(async () => {
-      const { data: { user } } = await sb.auth.getUser()
-      if (!user) { router.replace('/admin-login'); return }
-      const { data: prof } = await sb.from('profiles').select('*').eq('id', user.id).single()
-      if (!prof || prof.role !== 'admin') { await sb.auth.signOut(); router.replace('/admin-login'); return }
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { window.location.replace('/admin-login'); return }
+      const { data: prof, error } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
+      if (error || !prof) { toast.error('Could not load profile'); await sb.auth.signOut(); window.location.replace('/admin-login'); return }
+      if (prof.role !== 'admin') { await sb.auth.signOut(); window.location.replace('/admin-login'); return }
       setProfile(prof); setLoading(false)
     })()
   }, [router])
 
-  async function logout() { await supabaseBrowser().auth.signOut(); toast.success('Logged out'); router.replace('/admin-login') }
+  async function logout() { await supabaseBrowser().auth.signOut(); toast.success('Logged out'); window.location.replace('/admin-login') }
 
   const nav = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },

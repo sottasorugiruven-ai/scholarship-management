@@ -1,32 +1,43 @@
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabaseBrowser } from '@/lib/supabase/browser'
 import { toast } from 'sonner'
 import { ShieldCheck, ArrowLeft, Loader2 } from 'lucide-react'
 
 export default function AdminLogin() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
+  useEffect(() => {
+    const sb = supabaseBrowser()
+    ;(async () => {
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) return
+      const { data: prof } = await sb.from('profiles').select('role').eq('id', session.user.id).maybeSingle()
+      if (prof?.role === 'admin') window.location.assign('/admin/dashboard')
+    })()
+  }, [])
+
   async function onSubmit(e) {
     e.preventDefault()
+    if (loading) return
     setLoading(true)
     const sb = supabaseBrowser()
     const { data, error } = await sb.auth.signInWithPassword({ email, password })
     if (error) { setLoading(false); toast.error(error.message); return }
-    const { data: prof } = await sb.from('profiles').select('role').eq('id', data.user.id).single()
-    if (prof?.role !== 'admin') {
+    const { data: prof, error: profErr } = await sb.from('profiles').select('role, full_name').eq('id', data.user.id).maybeSingle()
+    if (profErr) { setLoading(false); toast.error(`Could not load your profile: ${profErr.message}`); return }
+    if (!prof) { setLoading(false); toast.error('No profile found for this account.'); return }
+    if (prof.role !== 'admin') {
       await sb.auth.signOut()
       setLoading(false)
-      toast.error('This account is not an admin account.')
+      toast.error('This account is not an admin account. Please use the Student login.')
       return
     }
     toast.success('Welcome back, admin')
-    router.push('/admin/dashboard')
+    window.location.assign('/admin/dashboard')
   }
 
   return (
@@ -54,7 +65,7 @@ export default function AdminLogin() {
             </div>
             <div className="text-right"><a href="#" className="text-xs text-[#0b2b6b] hover:underline">Forgot password?</a></div>
             <button disabled={loading} className="w-full h-11 rounded-lg bg-[#0b2b6b] hover:bg-[#0a2358] text-white font-medium text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60">
-              {loading && <Loader2 className="h-4 w-4 animate-spin"/>} Login
+              {loading && <Loader2 className="h-4 w-4 animate-spin"/>} {loading ? 'Signing in\u2026' : 'Login'}
             </button>
           </form>
           <div className="mt-6 text-xs text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-200">
